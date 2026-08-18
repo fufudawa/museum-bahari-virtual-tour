@@ -65,6 +65,8 @@ export function usePanorama(
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<PannellumViewerInstance | null>(null);
   const hotspotRootsRef = useRef<Root[]>([]);
+  // Guards against unmounting the same root twice — see scheduleRootUnmount.
+  const unmountedRootsRef = useRef<WeakSet<Root>>(new WeakSet());
 
   // Always-latest ref so the tour-creation effect below (deliberately not
   // re-run when this callback's identity changes — see its deps array)
@@ -83,12 +85,34 @@ export function usePanorama(
   const [currentRoomId, setCurrentRoomId] = useState(initialRoomId);
   const [retryToken, setRetryToken] = useState(0);
 
-  const unmountHotspotRoots = useCallback(() => {
-    for (const root of hotspotRootsRef.current) {
+  // Unmounting a hotspot's React root can be triggered from inside the
+  // Pannellum `scenechange` listener below, which itself fires
+  // synchronously from `loadScene()`, which is called synchronously from
+  // a navigation hotspot's `onClick` — i.e. still inside the same React
+  // event-handling/commit pass that click kicked off. Calling
+  // `root.unmount()` there throws "Attempted to synchronously unmount a
+  // root while React was already rendering." `setTimeout` defers the
+  // actual unmount to a fresh macrotask, guaranteed to run only after
+  // React has finished committing the current update — by then Pannellum
+  // has already removed the hotspot's DOM node from the document too,
+  // which `root.unmount()` handles fine either way. The `unmountedRoots`
+  // WeakSet makes the call idempotent in case the same root ever ends up
+  // scheduled more than once.
+  const scheduleRootUnmount = useCallback((root: Root) => {
+    setTimeout(() => {
+      if (unmountedRootsRef.current.has(root)) return;
+      unmountedRootsRef.current.add(root);
       root.unmount();
-    }
-    hotspotRootsRef.current = [];
+    }, 0);
   }, []);
+
+  const unmountHotspotRoots = useCallback(() => {
+    const roots = hotspotRootsRef.current;
+    hotspotRootsRef.current = [];
+    for (const root of roots) {
+      scheduleRootUnmount(root);
+    }
+  }, [scheduleRootUnmount]);
 
   useEffect(() => {
     const container = containerRef.current;
