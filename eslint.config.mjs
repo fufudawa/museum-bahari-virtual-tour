@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Vendored third-party runtime assets (see scripts/sync-pannellum-assets.mjs)
+    // — not code we author, should never be linted.
+    "public/vendor/**",
   ]),
 ]);
 
