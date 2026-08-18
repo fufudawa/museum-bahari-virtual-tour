@@ -84,7 +84,18 @@ export default function VirtualTourPage() {
     // observable is what let this phase's browser smoke test assert that
     // React and Pannellum's scene state actually stay synchronized.
     <main
-      className="relative flex min-h-dvh flex-1 overflow-hidden bg-deep"
+      // flex-col (not the row default): `<main>` holds exactly one in-flow
+      // child (PanoramaViewer's wrapper below) plus two absolutely-
+      // positioned overlays (RoomControls, CollectionSheet) that don't
+      // participate in flex layout at all — so direction only matters for
+      // that one child, and column direction is what lets it claim height
+      // via flex-grow (see PanoramaViewer's wrapper) instead of a
+      // percentage `height: 100%`, which doesn't reliably resolve against
+      // a flex container whose own height comes from `min-h-dvh` + a
+      // flex-item `flex-1` on itself (confirmed via computed-style
+      // inspection — `<main>` measured a real, definite 812px, but the
+      // percentage-height child still computed to 0px).
+      className="relative flex flex-col min-h-dvh flex-1 overflow-hidden bg-deep"
       data-current-room-id={currentRoomId}
     >
       <PanoramaViewer

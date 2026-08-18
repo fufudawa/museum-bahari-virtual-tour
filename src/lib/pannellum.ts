@@ -120,17 +120,47 @@ declare global {
 
 let runtimeLoadPromise: Promise<void> | null = null;
 
+/** True only once `window.pannellum` is genuinely usable, not just present. */
+function isPannellumReady(): boolean {
+  return typeof window !== "undefined" && typeof window.pannellum?.viewer === "function";
+}
+
 /**
- * Injects Pannellum's stylesheet + script exactly once and resolves once
- * `window.pannellum` is available. Safe to call from multiple components —
- * subsequent calls reuse the same in-flight/resolved promise.
+ * Injects Pannellum's stylesheet + script exactly once and resolves only
+ * once `window.pannellum` is confirmed available — never earlier. Safe to
+ * call from multiple components: subsequent calls reuse the same
+ * in-flight/resolved promise, and a script tag is only ever injected once
+ * per page (guarded via `document.querySelector`, independent of this
+ * module's own cache, in case something else in the page already has one).
+ *
+ * Two failure modes this specifically guards against, found via a browser
+ * bug report of `window.pannellum === undefined` at runtime even though
+ * the vendored file itself served fine on request:
+ *
+ * 1. A `<script>` tag from an earlier call may already have finished
+ *    loading — its `load` event already fired once, in the past. Attaching
+ *    a *new* `addEventListener("load", ...)` to it at that point never
+ *    fires again, so the promise returned to a later caller would hang
+ *    forever (viewer never created, no error, panorama silently stays
+ *    blank). Completion is now tracked with an explicit
+ *    `data-pannellum-loaded`/`data-pannellum-failed` marker on the script
+ *    element itself, checked *before* attaching new listeners.
+ * 2. A script's `load` event only proves the file was fetched and parsed —
+ *    not that `window.pannellum` actually got assigned (a runtime error
+ *    partway through the vendor script's IIFE, before its
+ *    `window.pannellum = ...` assignment, would still fire `load`
+ *    normally). `isPannellumReady()` is checked explicitly before
+ *    resolving; if the script "loaded" but the global genuinely isn't
+ *    there, this rejects with a clear error instead of silently
+ *    continuing — `usePanorama`'s existing `.catch()` turns that into the
+ *    same "Panorama belum bisa dimuat." error state as any other failure.
  */
 export function loadPannellumRuntime(): Promise<void> {
   if (typeof window === "undefined") {
     return Promise.reject(new Error("loadPannellumRuntime() called outside the browser"));
   }
 
-  if (window.pannellum) {
+  if (isPannellumReady()) {
     return Promise.resolve();
   }
 
@@ -138,8 +168,16 @@ export function loadPannellumRuntime(): Promise<void> {
     return runtimeLoadPromise;
   }
 
-  runtimeLoadPromise = new Promise<void>((resolve, reject) => {
-    if (!document.querySelector(`link[data-pannellum-style]`)) {
+  const promise = new Promise<void>((resolve, reject) => {
+    function settle() {
+      if (isPannellumReady()) {
+        resolve();
+      } else {
+        reject(new Error("Pannellum script loaded but window.pannellum was not set"));
+      }
+    }
+
+    if (!document.querySelector("link[data-pannellum-style]")) {
       const link = document.createElement("link");
       link.rel = "stylesheet";
       link.href = STYLE_HREF;
@@ -150,8 +188,18 @@ export function loadPannellumRuntime(): Promise<void> {
     const existingScript = document.querySelector<HTMLScriptElement>(
       "script[data-pannellum-script]",
     );
+
     if (existingScript) {
-      existingScript.addEventListener("load", () => resolve());
+      if (existingScript.dataset.pannellumLoaded === "true") {
+        settle();
+        return;
+      }
+      if (existingScript.dataset.pannellumFailed === "true") {
+        reject(new Error("Pannellum script previously failed to load"));
+        return;
+      }
+      // Still genuinely in flight — safe to wait for its events.
+      existingScript.addEventListener("load", settle);
       existingScript.addEventListener("error", () =>
         reject(new Error("Failed to load Pannellum script")),
       );
@@ -162,14 +210,27 @@ export function loadPannellumRuntime(): Promise<void> {
     script.src = SCRIPT_SRC;
     script.async = true;
     script.setAttribute("data-pannellum-script", "true");
-    script.addEventListener("load", () => resolve());
-    script.addEventListener("error", () =>
-      reject(new Error("Failed to load Pannellum script")),
-    );
+    script.addEventListener("load", () => {
+      script.dataset.pannellumLoaded = "true";
+      settle();
+    });
+    script.addEventListener("error", () => {
+      script.dataset.pannellumFailed = "true";
+      reject(new Error("Failed to load Pannellum script"));
+    });
     document.body.appendChild(script);
   });
 
-  return runtimeLoadPromise;
+  runtimeLoadPromise = promise;
+  // Don't let a failed attempt poison every future call in this session —
+  // clear the cache on rejection so a later retry (e.g. usePanorama's
+  // `retry()`) gets a genuinely fresh attempt instead of the same
+  // already-rejected promise forever.
+  promise.catch(() => {
+    runtimeLoadPromise = null;
+  });
+
+  return promise;
 }
 
 // ---- Tour construction ----

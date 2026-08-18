@@ -89,3 +89,26 @@ body {
   bottom: 16px !important;
   left: 16px !important;
 }
+
+/*
+ * F2C: our own containerRef div (className "absolute inset-0") is the
+ * exact element Pannellum hands `.pnlm-container` to. Pannellum's own
+ * stylesheet sets `.pnlm-container { position: relative; ... }` — same
+ * specificity as Tailwind's `.absolute` utility, but loaded later (it's
+ * injected via <link> at runtime, after Tailwind's build-time CSS), so it
+ * wins the cascade and silently downgrades the element to position:
+ * relative. With `top/right/bottom/left: 0` (Tailwind's `inset-0`, still
+ * uncontested) but position back to `relative`, the browser stops using
+ * those offsets to compute a definite height at all — the element's
+ * height collapses to 0 (confirmed via computed-style inspection: the
+ * parent measured a real, non-zero height, but this element still read
+ * position: relative / height: 0px). Forcing position back to `absolute`
+ * restores the intended "fill the positioned parent" behavior; !important
+ * is required for the same reason as the control overrides above — this
+ * is fighting a later-loaded, equal-specificity stylesheet, not a
+ * specificity fight we can win by reordering our own classes.
+ */
+.pnlm-container {
+  position: absolute !important;
+  inset: 0 !important;
+}

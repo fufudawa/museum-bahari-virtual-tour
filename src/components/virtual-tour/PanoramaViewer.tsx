@@ -50,7 +50,19 @@ export function PanoramaViewer({
 
   return (
     <SceneTransition>
-      <div className="relative h-full w-full bg-deep" data-current-room-id={currentRoomId}>
+      <div
+        // flex-1 + min-h-0, not h-full: this div's height must come from
+        // the flex algorithm (flex-grow along <main>'s now-column main
+        // axis), not from `height: 100%` resolving against the parent —
+        // that percentage failed to resolve to a non-zero height in
+        // practice even though the parent measured a real 812px (see
+        // virtual-tour/page.tsx's comment on <main>). `min-h-0` overrides
+        // the flex-item default `min-height: auto`, which would otherwise
+        // let this item's content push it taller than the available space
+        // instead of being sized by flex-grow.
+        className="relative min-h-0 w-full flex-1 bg-deep"
+        data-current-room-id={currentRoomId}
+      >
         <div
           ref={containerRef}
           role="img"
