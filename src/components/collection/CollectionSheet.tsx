@@ -7,6 +7,7 @@ import { CollectionPeek } from "./CollectionPeek";
 import { CollectionDetail } from "./CollectionDetail";
 import { Transcript } from "./Transcript";
 import { CollectionNotFound } from "./CollectionNotFound";
+import { getCollectionDisplayTitle } from "@/lib/collection";
 
 type CollectionSheetProps = {
   state: CollectionSheetState;
@@ -100,7 +101,7 @@ export function CollectionSheet({
       ref={sheetRef}
       role="dialog"
       aria-modal="true"
-      aria-label={collection ? collection.title : "Koleksi"}
+      aria-label={collection ? getCollectionDisplayTitle(collection) : "Koleksi"}
       tabIndex={-1}
       className="absolute inset-x-0 bottom-0 flex flex-col rounded-t-[var(--radius-sheet)] bg-sheet shadow-[0_-10px_30px_rgba(18,12,4,0.22)] outline-none"
       style={{ maxHeight: state === "peek" ? "34%" : "91%" }}

@@ -14,6 +14,7 @@ import {
 } from "@/lib/pannellum";
 import { NavigationHotspot } from "@/components/virtual-tour/NavigationHotspot";
 import { CollectionHotspot } from "@/components/virtual-tour/CollectionHotspot";
+import { getCollectionDisplayTitle } from "@/lib/collection";
 
 export type UsePanoramaResult = {
   /** Attach to the element Pannellum should mount the tour into. */
@@ -137,13 +138,17 @@ export function usePanorama(
           collections,
           initialRoomId,
           {
-            mountNavigationHotspot: (mountEl, hotspot, destinationRoomTitle, navigate) => {
+            mountNavigationHotspot: (mountEl, hotspot, direction, navigate) => {
               const root = createRoot(mountEl);
               hotspotRootsRef.current.push(root);
               root.render(
                 <NavigationHotspot
                   hotspot={hotspot}
-                  destinationLabel={destinationRoomTitle}
+                  // Defensive fallback only — every F3A-generated hotspot
+                  // always carries an explicit direction; `direction` is
+                  // optional on the type for topologies that might not
+                  // have one (see types/virtual-tour.ts).
+                  direction={direction ?? "next"}
                   onActivate={navigate}
                 />,
               );
@@ -154,7 +159,7 @@ export function usePanorama(
               root.render(
                 <CollectionHotspot
                   hotspot={hotspot}
-                  title={collection?.title}
+                  title={collection ? getCollectionDisplayTitle(collection) : undefined}
                   onActivate={() => onCollectionActivateRef.current?.(hotspot)}
                 />,
               );

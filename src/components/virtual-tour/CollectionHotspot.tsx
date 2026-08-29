@@ -2,18 +2,17 @@ import type { CollectionHotspot as CollectionHotspotData } from "@/types/virtual
 
 type CollectionHotspotProps = {
   hotspot: CollectionHotspotData;
-  /** Collection title, if resolved — used only for the accessible label. */
+  /** Display title (officialName-preferred), if resolved — used only for the accessible label. */
   title?: string;
   onActivate: (hotspot: CollectionHotspotData) => void;
 };
 
 /**
  * Filled marker — visually and semantically distinct from
- * NavigationHotspot's outlined ring (never merged with it). Rendered so
- * the visual contrast between hotspot types is real and on-screen, not
- * just documented — but F2B explicitly does not connect this to the
- * collection sheet. `onActivate` is wired to an inert stub at the mount
- * site (see usePanorama.tsx); connecting it is next-phase work.
+ * NavigationHotspot's outlined ring (never merged with it). `onActivate`
+ * is real (F3): tapping selects the collection and opens the sheet at
+ * "peek", via the same React-owns-the-click architecture established for
+ * navigation hotspots in F2B/F3A — never Pannellum's native onclick.
  */
 export function CollectionHotspot({
   hotspot,
@@ -24,7 +23,7 @@ export function CollectionHotspot({
     <button
       type="button"
       onClick={() => onActivate(hotspot)}
-      aria-label={title ? `Lihat koleksi: ${title}` : "Lihat koleksi"}
+      aria-label={title ? `Lihat koleksi ${title}` : "Lihat koleksi"}
       className="relative flex h-11 w-11 items-center justify-center"
     >
       <span className="absolute h-7 w-7 rounded-full border border-brass-line/70" aria-hidden="true" />

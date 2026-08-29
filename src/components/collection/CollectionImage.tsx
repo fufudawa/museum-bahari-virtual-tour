@@ -9,16 +9,12 @@ type CollectionImageProps = {
 };
 
 /**
- * Renders `collection.imageUrl`; on load failure, falls back to the same
- * abstract placeholder treatment used throughout Hi-Fi Design v1.0 (a
- * quiet ship-motif mark on a deep gradient) instead of a broken-image icon
- * or a raw browser error. Shared by CollectionPeek and CollectionDetail so
- * neither hardcodes an image URL or duplicates the fallback logic.
- *
- * Today every mock `imageUrl` points at a path that doesn't exist yet (no
- * real Museum Bahari photography has been supplied), so this fallback is
- * the state visitors will actually see — a deliberate, honest placeholder
- * rather than fabricated "photography."
+ * Renders a collection's `coverImage`/`detailImage`; on load failure,
+ * falls back to the same abstract placeholder treatment used throughout
+ * Hi-Fi Design v1.0 (a quiet ship-motif mark on a deep gradient) instead
+ * of a broken-image icon or a raw browser error. Shared by CollectionPeek
+ * and CollectionDetail so neither hardcodes an image URL or duplicates
+ * the fallback logic.
  */
 export function CollectionImage({ src, alt, className = "" }: CollectionImageProps) {
   const [failed, setFailed] = useState(false);

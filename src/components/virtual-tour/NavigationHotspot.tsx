@@ -2,9 +2,16 @@ import type { NavigationHotspot as NavigationHotspotData } from "@/types/virtual
 
 type NavigationHotspotProps = {
   hotspot: NavigationHotspotData;
-  /** Human-readable target room title, e.g. "Anjungan". Optional — see F2B report. */
-  destinationLabel?: string;
+  /** Which way this hotspot leads along the tour — drives both the label and the icon's facing. */
+  direction: "next" | "previous";
   onActivate: (hotspot: NavigationHotspotData) => void;
+};
+
+/** F3A: direction-based labels, not destination-name-based — the tour is
+ * a sequential walkthrough, not a set of named rooms yet. */
+const DIRECTION_LABEL: Record<"next" | "previous", string> = {
+  next: "Ke titik berikutnya",
+  previous: "Kembali ke titik sebelumnya",
 };
 
 /**
@@ -23,18 +30,20 @@ type NavigationHotspotProps = {
  * actually driving navigation. No confirmation step, no hold, no second
  * tap — one `onClick` straight to one `onActivate` call.
  *
- * The destination label is optional contextual feedback (locked UX
- * decision): revealed on hover/focus only, via CSS — never a second tap,
- * never blocking navigation, never a button of its own.
+ * `direction` gives the same chevron a forward (right-pointing, "next")
+ * or backward (mirrored, left-pointing, "previous") reading — one icon
+ * asset, one CSS flip, no new design system. The label is always shown:
+ * always present in `aria-label`, and revealed on hover/focus only as a
+ * subtle visible tooltip (locked UX decision) — never a second tap, never
+ * blocking navigation, never a button of its own.
  */
 export function NavigationHotspot({
   hotspot,
-  destinationLabel,
+  direction,
   onActivate,
 }: NavigationHotspotProps) {
-  const accessibleLabel = destinationLabel
-    ? `Menuju ${destinationLabel}`
-    : "Menuju ruang lain";
+  const accessibleLabel = DIRECTION_LABEL[direction];
+  const isPrevious = direction === "previous";
 
   return (
     <span className="group relative inline-flex h-11 w-11 items-center justify-center">
@@ -44,7 +53,11 @@ export function NavigationHotspot({
         aria-label={accessibleLabel}
         className="flex h-11 w-11 items-center justify-center rounded-full border-[1.6px] border-white/85 bg-deep/35 text-on-deep shadow-[0_1px_4px_rgba(0,0,0,0.28)] transition-transform duration-150 active:scale-95"
       >
-        <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
+        <svg
+          viewBox="0 0 24 24"
+          className={`h-4 w-4 ${isPrevious ? "-scale-x-100" : ""}`}
+          aria-hidden="true"
+        >
           <path
             d="M9 6l6 6-6 6"
             fill="none"
@@ -56,14 +69,12 @@ export function NavigationHotspot({
         </svg>
       </button>
 
-      {destinationLabel && (
-        <span
-          aria-hidden="true"
-          className="pointer-events-none absolute bottom-full left-1/2 mb-2 -translate-x-1/2 whitespace-nowrap rounded-md bg-deep px-2.5 py-1 text-[11px] font-semibold text-on-deep opacity-0 shadow-[0_3px_10px_rgba(0,0,0,0.25)] transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
-        >
-          Menuju {destinationLabel}
-        </span>
-      )}
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute bottom-full left-1/2 mb-2 -translate-x-1/2 whitespace-nowrap rounded-md bg-deep px-2.5 py-1 text-[11px] font-semibold text-on-deep opacity-0 shadow-[0_3px_10px_rgba(0,0,0,0.25)] transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
+      >
+        {accessibleLabel}
+      </span>
     </span>
   );
 }

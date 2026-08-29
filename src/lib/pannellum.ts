@@ -257,12 +257,17 @@ export function loadPannellumRuntime(): Promise<void> {
  * sidesteps the conflict entirely and is, if anything, more robust: it's
  * an ordinary React click handler, not dependent on native event bubbling
  * timing relative to when React attaches its root listener.
+ *
+ * `direction` (F3A) is read straight off the hotspot's own `direction`
+ * field (see types/virtual-tour.ts) — not looked up from `rooms` — so
+ * this module doesn't need to know anything about topology beyond what
+ * each hotspot already carries.
  */
 export type PannellumHotspotMountHooks = {
   mountNavigationHotspot: (
     container: HTMLElement,
     hotspot: Extract<Hotspot, { type: "navigation" }>,
-    destinationRoomTitle: string | undefined,
+    direction: "next" | "previous" | undefined,
     navigate: () => void,
   ) => void;
   mountCollectionHotspot: (
@@ -279,13 +284,11 @@ type ViewerRef = { current: PannellumViewerInstance | undefined };
 
 function buildHotspotConfig(
   hotspot: Hotspot,
-  rooms: TourRoom[],
   collections: Collection[],
   hooks: PannellumHotspotMountHooks,
   viewerRef: ViewerRef,
 ): PannellumHotSpotConfig {
   if (hotspot.type === "navigation") {
-    const destinationRoom = rooms.find((room) => room.id === hotspot.targetRoomId);
     return {
       id: hotspot.id,
       pitch: hotspot.pitch,
@@ -298,7 +301,7 @@ function buildHotspotConfig(
       type: "scene",
       cssClass: "pnlm-hotspot-mount",
       createTooltipFunc: (div) => {
-        hooks.mountNavigationHotspot(div, hotspot, destinationRoom?.title, () => {
+        hooks.mountNavigationHotspot(div, hotspot, hotspot.direction, () => {
           viewerRef.current?.loadScene(hotspot.targetRoomId);
         });
       },
@@ -357,7 +360,7 @@ export function createPannellumTourViewer(
       yaw: 0,
       hfov: 100,
       hotSpots: room.hotspots.map((hotspot) =>
-        buildHotspotConfig(hotspot, rooms, collections, hooks, viewerRef),
+        buildHotspotConfig(hotspot, collections, hooks, viewerRef),
       ),
     };
   }
