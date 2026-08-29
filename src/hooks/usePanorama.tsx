@@ -68,6 +68,18 @@ export function usePanorama(
   const hotspotRootsRef = useRef<Root[]>([]);
   // Guards against unmounting the same root twice — see scheduleRootUnmount.
   const unmountedRootsRef = useRef<WeakSet<Root>>(new WeakSet());
+  // Read inside the Pannellum `load` listener (see preloadAdjacentScenes
+  // below) instead of the `currentRoomId` React state value, because that
+  // listener closure is attached once when the tour is created and would
+  // otherwise only ever see the `initialRoomId` it captured at that time —
+  // this ref is updated synchronously in the `scenechange` listener, which
+  // does receive the new scene id directly as an argument.
+  const currentRoomIdRef = useRef(initialRoomId);
+  // Panorama URLs already handed to `new Image()` this tour, so walking
+  // back and forth between two already-preloaded neighbours doesn't keep
+  // re-issuing `Image()` allocations — the browser's own HTTP cache
+  // already dedupes the actual network fetch either way.
+  const preloadedUrlsRef = useRef<Set<string>>(new Set());
 
   // Always-latest ref so the tour-creation effect below (deliberately not
   // re-run when this callback's identity changes — see its deps array)
@@ -115,6 +127,64 @@ export function usePanorama(
     }
   }, [scheduleRootUnmount]);
 
+  /**
+   * F3B: after a scene finishes loading, fetch its immediate neighbours'
+   * (`previousSceneId`/`nextSceneId`) panorama images — never the whole
+   * 32-scene tour — via a plain `new Image()`, so a subsequent
+   * `loadScene()` to either one is very likely already in the browser's
+   * HTTP/decode cache instead of starting a ~10MB fetch cold.
+   *
+   * These panoramas are 6528x3264, roughly 10MB each — preloading both
+   * neighbours on every scene unconditionally could cost a visitor on a
+   * slow or metered connection ~20MB they never asked for. The Network
+   * Information API (`navigator.connection`) lets this skip preloading
+   * when the browser itself reports `saveData` or a slow `effectiveType`;
+   * it's unsupported in Safari/iOS, where this deliberately degrades to
+   * "always preload" rather than "never preload" — the two neighbours are
+   * a small, bounded cost even there, not the full tour.
+   */
+  const preloadAdjacentScenes = useCallback(
+    (roomId: string) => {
+      const connection = (
+        navigator as Navigator & {
+          connection?: { saveData?: boolean; effectiveType?: string };
+        }
+      ).connection;
+      if (connection?.saveData) return;
+      if (connection?.effectiveType && ["slow-2g", "2g", "3g"].includes(connection.effectiveType)) {
+        return;
+      }
+
+      const room = rooms.find((r) => r.id === roomId);
+      if (!room) return;
+
+      const neighborUrls = [room.previousSceneId, room.nextSceneId]
+        .filter((id): id is string => Boolean(id))
+        .map((id) => rooms.find((r) => r.id === id)?.panoramaUrl)
+        .filter((url): url is string => Boolean(url))
+        .filter((url) => !preloadedUrlsRef.current.has(url));
+
+      if (neighborUrls.length === 0) return;
+
+      const run = () => {
+        for (const url of neighborUrls) {
+          preloadedUrlsRef.current.add(url);
+          const img = new Image();
+          img.src = url;
+        }
+      };
+
+      // Deferred to idle time so this never competes with the scene the
+      // visitor is actually looking at right now.
+      if (typeof window.requestIdleCallback === "function") {
+        window.requestIdleCallback(run, { timeout: 2000 });
+      } else {
+        setTimeout(run, 300);
+      }
+    },
+    [rooms],
+  );
+
   useEffect(() => {
     const container = containerRef.current;
     if (!container) {
@@ -127,6 +197,8 @@ export function usePanorama(
     setIsTransitioning(false);
     setError(null);
     setCurrentRoomId(initialRoomId);
+    currentRoomIdRef.current = initialRoomId;
+    preloadedUrlsRef.current = new Set();
 
     loadPannellumRuntime()
       .then(() => {
@@ -173,6 +245,7 @@ export function usePanorama(
           hasLoadedOnce = true;
           setIsLoading(false);
           setIsTransitioning(false);
+          preloadAdjacentScenes(currentRoomIdRef.current);
         });
 
         viewer.on("scenechange", (sceneId) => {
@@ -183,6 +256,7 @@ export function usePanorama(
           // created by mountNavigationHotspot/mountCollectionHotspot once
           // the new scene's hotspots are (re)built.
           unmountHotspotRoots();
+          currentRoomIdRef.current = sceneId;
           setCurrentRoomId(sceneId);
           if (hasLoadedOnce) {
             setIsTransitioning(true);

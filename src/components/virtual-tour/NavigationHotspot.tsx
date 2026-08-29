@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import type { NavigationHotspot as NavigationHotspotData } from "@/types/virtual-tour";
 
 type NavigationHotspotProps = {
@@ -8,15 +11,43 @@ type NavigationHotspotProps = {
 };
 
 /** F3A: direction-based labels, not destination-name-based — the tour is
- * a sequential walkthrough, not a set of named rooms yet. */
+ * a sequential walkthrough, not a set of named rooms yet. Full sentences,
+ * kept as the accessible name; the on-screen chip below shows a shorter
+ * "Kembali" / "Lanjut" pair instead (see COMPACT_LABEL). */
 const DIRECTION_LABEL: Record<"next" | "previous", string> = {
   next: "Ke titik berikutnya",
   previous: "Kembali ke titik sebelumnya",
 };
 
+const COMPACT_LABEL: Record<"next" | "previous", string> = {
+  next: "Lanjut",
+  previous: "Kembali",
+};
+
+/** How long the label chip stays open right after a hotspot mounts, before
+ * settling back to the icon-only idle ring. */
+const AUTO_REVEAL_MS = 2200;
+
 /**
- * Outlined / static ring — visually and semantically distinct from
+ * Outlined ring (idle) that expands into a compact "← Kembali" /
+ * "Lanjut →" label chip — visually and semantically distinct from
  * CollectionHotspot's filled, pulsing dot (never merged with it).
+ *
+ * F3B: previously this used one chevron path mirrored via `-scale-x-100`
+ * for "previous", which visitors reported as impossible to read at a
+ * glance — a mirrored right-arrow doesn't unambiguously read as "back".
+ * Each direction now gets its own explicit path (no mirroring), and the
+ * chip's DOM/flex order is swapped per direction so the reading order
+ * always matches the requested "← Kembali" / "Lanjut →" shape.
+ *
+ * The label chip has no hover-only path: Pannellum destroys and remounts
+ * every hotspot's DOM node (and this component with it) on each
+ * `scenechange` (see lib/pannellum.ts), so a fresh mount is exactly the
+ * moment a visitor most needs the Next/Previous cue — and the only signal
+ * touch devices can give us at all, since they have no hover state. The
+ * chip auto-opens for `AUTO_REVEAL_MS` on mount, then settles back to the
+ * compact ring; `group-hover`/`group-focus-within` reopen it afterward for
+ * mouse/keyboard users, but touch users are never dependent on either.
  *
  * This component is mounted BY Pannellum itself (see lib/pannellum.ts /
  * usePanorama.tsx): Pannellum owns pitch/yaw → screen-position projection
@@ -29,13 +60,6 @@ const DIRECTION_LABEL: Record<"next" | "previous", string> = {
  * smoke test), so this component's button click is the only thing
  * actually driving navigation. No confirmation step, no hold, no second
  * tap — one `onClick` straight to one `onActivate` call.
- *
- * `direction` gives the same chevron a forward (right-pointing, "next")
- * or backward (mirrored, left-pointing, "previous") reading — one icon
- * asset, one CSS flip, no new design system. The label is always shown:
- * always present in `aria-label`, and revealed on hover/focus only as a
- * subtle visible tooltip (locked UX decision) — never a second tap, never
- * blocking navigation, never a button of its own.
  */
 export function NavigationHotspot({
   hotspot,
@@ -43,23 +67,28 @@ export function NavigationHotspot({
   onActivate,
 }: NavigationHotspotProps) {
   const accessibleLabel = DIRECTION_LABEL[direction];
+  const compactLabel = COMPACT_LABEL[direction];
   const isPrevious = direction === "previous";
 
+  const [autoOpen, setAutoOpen] = useState(true);
+  useEffect(() => {
+    const timer = setTimeout(() => setAutoOpen(false), AUTO_REVEAL_MS);
+    return () => clearTimeout(timer);
+  }, []);
+
   return (
-    <span className="group relative inline-flex h-11 w-11 items-center justify-center">
+    <span className="group relative inline-flex h-11 items-center">
       <button
         type="button"
         onClick={() => onActivate(hotspot)}
         aria-label={accessibleLabel}
-        className="flex h-11 w-11 items-center justify-center rounded-full border-[1.6px] border-white/85 bg-deep/35 text-on-deep shadow-[0_1px_4px_rgba(0,0,0,0.28)] transition-transform duration-150 active:scale-95"
+        className={`flex h-11 min-w-11 items-center justify-center rounded-full border-[1.6px] border-white/85 bg-deep/70 px-3.5 text-on-deep shadow-[0_1px_4px_rgba(0,0,0,0.28)] transition-[gap,transform] duration-200 active:scale-95 group-hover:gap-1.5 group-focus-within:gap-1.5 ${
+          isPrevious ? "" : "flex-row-reverse"
+        } ${autoOpen ? "gap-1.5" : "gap-0"}`}
       >
-        <svg
-          viewBox="0 0 24 24"
-          className={`h-4 w-4 ${isPrevious ? "-scale-x-100" : ""}`}
-          aria-hidden="true"
-        >
+        <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" aria-hidden="true">
           <path
-            d="M9 6l6 6-6 6"
+            d={isPrevious ? "M15 6l-6 6 6 6" : "M9 6l6 6-6 6"}
             fill="none"
             stroke="currentColor"
             strokeWidth={2}
@@ -67,14 +96,15 @@ export function NavigationHotspot({
             strokeLinejoin="round"
           />
         </svg>
+        <span
+          aria-hidden="true"
+          className={`overflow-hidden whitespace-nowrap text-[11px] font-semibold tracking-wide transition-[max-width,opacity] duration-200 group-hover:max-w-[6rem] group-hover:opacity-100 group-focus-within:max-w-[6rem] group-focus-within:opacity-100 ${
+            autoOpen ? "max-w-[6rem] opacity-100" : "max-w-0 opacity-0"
+          }`}
+        >
+          {compactLabel}
+        </span>
       </button>
-
-      <span
-        aria-hidden="true"
-        className="pointer-events-none absolute bottom-full left-1/2 mb-2 -translate-x-1/2 whitespace-nowrap rounded-md bg-deep px-2.5 py-1 text-[11px] font-semibold text-on-deep opacity-0 shadow-[0_3px_10px_rgba(0,0,0,0.25)] transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
-      >
-        {accessibleLabel}
-      </span>
     </span>
   );
 }
