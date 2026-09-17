@@ -31,7 +31,25 @@ export type CollectionHotspot = {
   yaw: number;
 };
 
-export type Hotspot = NavigationHotspot | CollectionHotspot;
+/**
+ * F32: a single, explicitly-placed in-scene link to another scene —
+ * distinct from `NavigationHotspot` specifically so it's NOT swept up by
+ * the `hotspot.type !== "navigation"` filter in lib/pannellum.ts that
+ * hides every generic sequential next/previous hotspot in favor of the
+ * fixed NavigationControls pill. Used for S15's cream-display hotspot into
+ * S16 (a scene outside the normal sequential chain), where a visible,
+ * object-anchored hotspot is the intended primary way to move forward —
+ * see data/mock-tour.ts's `DEV_SCENE_LINK_PLACEMENTS`.
+ */
+export type SceneLinkHotspot = {
+  type: "scene-link";
+  id: string;
+  targetRoomId: string;
+  pitch: number;
+  yaw: number;
+};
+
+export type Hotspot = NavigationHotspot | CollectionHotspot | SceneLinkHotspot;
 
 export type TourRoom = {
   id: string;
@@ -49,6 +67,35 @@ export type TourRoom = {
    */
   previousSceneId?: string | null;
   nextSceneId?: string | null;
+
+  /**
+   * F10: camera orientation the visitor lands on when arriving at this
+   * scene (both via Next and via Previous — Pannellum's `loadScene()` has
+   * no notion of "arrived from which direction", so this is the one
+   * orientation used either way; see lib/pannellum.ts's module doc comment
+   * and the F10 report for why a single well-centered forward view works
+   * for both directions in practice). Calibrated per-scene from the source
+   * photo's own composition — NOT a generic constant — because each
+   * scene's equirectangular capture has its own arbitrary "seam" direction
+   * unrelated to which way the museum corridor runs at that spot. `undefined`
+   * means yaw 0 already lands correctly for that scene (most of them do;
+   * see data/mock-tour.ts's `SCENE_FORWARD_YAW` for which ones needed an
+   * explicit value and why) — deliberately not filled in with 0 for every
+   * scene just to have a value present everywhere.
+   */
+  defaultYaw?: number;
+  /** Same idea as `defaultYaw`, for pitch. `undefined` (-> neutral 0) for
+   * every current scene — none needed a tilt correction on audit. */
+  defaultPitch?: number;
+  /** Corrects the source photo's own camera roll (horizon not level in
+   * the capture itself) — NOT navigation drift, which does not occur (see
+   * the F10 report's empirical proof). `undefined` (-> 0) for every
+   * current scene; none showed a tilted horizon on audit. */
+  defaultRoll?: number;
+  /** Per-scene framing override. `undefined` (-> 100, the shared default —
+   * see lib/pannellum.ts) for every current scene; no scene's audit render
+   * looked mis-framed at 100, so none has needed a different value. */
+  defaultHfov?: number;
 };
 
 export type Collection = {
@@ -79,6 +126,20 @@ export type Collection = {
 
   audioUrl?: string;
   transcript?: string;
+
+  /**
+   * QR/deep-link entry point (see `/c/[collectionId]`): which scene's
+   * placement is "the" one a physical QR sticker on this object should
+   * land on. Purely a POINTER — it does NOT carry yaw/pitch itself; those
+   * still come from the matching row in `DEV_COLLECTION_PLACEMENTS` (see
+   * `getCollectionPlacement` in `data/mock-tour.ts`). A collection may
+   * still have placements in other scenes (unaffected) — this only picks
+   * which one is "primary" for a QR scan. `undefined` (the default for
+   * every collection except the QR proof-of-concept) means no curated
+   * entry scene yet; deep-linking falls back to the tour's normal first
+   * scene instead of guessing.
+   */
+  primarySceneId?: string;
 };
 
 /**

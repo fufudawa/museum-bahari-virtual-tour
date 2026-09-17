@@ -8,7 +8,12 @@ type IconButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   tone?: IconButtonTone;
 };
 
-const tones: Record<IconButtonTone, string> = {
+/**
+ * Exported so other on-panorama controls (e.g. NavigationControls' labeled
+ * Next/Previous pills) can share the exact same "glass" tone without
+ * duplicating the class list.
+ */
+export const tones: Record<IconButtonTone, string> = {
   onDeep:
     "bg-deep/40 text-on-deep border border-white/25 hover:bg-deep/60",
   onLight: "bg-surface text-ink border border-border hover:bg-parchment",

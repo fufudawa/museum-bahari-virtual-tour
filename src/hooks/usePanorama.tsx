@@ -28,6 +28,19 @@ export type UsePanoramaResult = {
   /** Re-runs tour initialization from scratch. */
   retry: () => void;
   toggleFullscreen: () => void;
+  /**
+   * Navigates straight to `sceneId` (F7: driven by NavigationControls'
+   * fixed Previous/Next/Return buttons, using `TourRoom.previousSceneId`/
+   * `nextSceneId`/a fixed home id directly rather than a hotspot). F14:
+   * passes `targetRoom.defaultPitch`/`defaultYaw`/`defaultHfov` to
+   * `loadScene()` explicitly (falling back to 0/0/100), rather than
+   * omitting them and relying on Pannellum's own scene-config fallback —
+   * same numeric result, but deterministic rather than implicit. Every
+   * scene keeps landing on its own calibrated forward-facing view
+   * regardless of travel direction, since neither Next nor Previous nor
+   * Return special-cases the call.
+   */
+  goToScene: (sceneId: string) => void;
 };
 
 /**
@@ -62,6 +75,14 @@ export function usePanorama(
   collections: Collection[],
   initialRoomId: string,
   onCollectionActivate?: (hotspot: CollectionHotspotData) => void,
+  // QR/deep-link proof-of-concept — forwarded as-is to
+  // `createPannellumTourViewer`'s own param of the same name (see its doc
+  // comment for exactly what this does/doesn't touch). Deliberately NOT
+  // part of the tour-creation effect's dependency array below, same as
+  // `rooms`/`collections` themselves: it only matters for the ONE-TIME
+  // initial viewer build tied to this `initialRoomId`, read via closure at
+  // that moment, not something that should ever re-trigger tour creation.
+  initialCameraOverride?: { pitch: number; yaw: number; hfov?: number },
 ): UsePanoramaResult {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<PannellumViewerInstance | null>(null);
@@ -236,7 +257,42 @@ export function usePanorama(
                 />,
               );
             },
+            // F32: reuses NavigationHotspot's exact chevron/label-chip
+            // component (arrow affordance, not a plain dot — see its doc
+            // comment) rather than inventing new hotspot UI. `direction:
+            // "next"` is the only sensible reading here — a scene-link
+            // hotspot only ever moves forward into a scene the visitor
+            // hasn't been to along this path. F14-style explicit
+            // pitch/yaw/hfov args on `loadScene`, same as `goToScene` below,
+            // so the target scene lands on its own calibrated forward view.
+            mountSceneLinkHotspot: (mountEl, hotspot) => {
+              const root = createRoot(mountEl);
+              hotspotRootsRef.current.push(root);
+              const targetRoom = rooms.find((room) => room.id === hotspot.targetRoomId);
+              root.render(
+                <NavigationHotspot
+                  hotspot={{
+                    type: "navigation",
+                    id: hotspot.id,
+                    targetRoomId: hotspot.targetRoomId,
+                    yaw: hotspot.yaw,
+                    pitch: hotspot.pitch,
+                    direction: "next",
+                  }}
+                  direction="next"
+                  onActivate={() => {
+                    viewerRef.current?.loadScene(
+                      hotspot.targetRoomId,
+                      targetRoom?.defaultPitch ?? 0,
+                      targetRoom?.defaultYaw ?? 0,
+                      targetRoom?.defaultHfov ?? 100,
+                    );
+                  }}
+                />,
+              );
+            },
           },
+          initialCameraOverride,
         );
         viewerRef.current = viewer;
 
@@ -297,6 +353,34 @@ export function usePanorama(
     viewerRef.current?.toggleFullscreen();
   }, []);
 
+  const goToScene = useCallback(
+    (sceneId: string) => {
+      const targetRoom = rooms.find((room) => room.id === sceneId);
+      // F14: explicit args, not `loadScene(sceneId)` alone. Pannellum's own
+      // `loadScene()` DOES apply a target scene's configured pitch/yaw when
+      // called with no pitch/yaw args — traced through
+      // node_modules/pannellum/src/js/pannellum.js's `loadScene()` and
+      // confirmed live (a deliberate yaw 0 vs -90 test on S05 produced a
+      // dramatic, correct visual difference — see the F14 report) — so this
+      // was never actually broken. It works by leaving `config.pitch`/
+      // `config.yaw` untouched after `mergeConfig(sceneId)` already set them
+      // from the scene's own config, which is correct but relies on a
+      // slightly obscure `if (workingPitch !== undefined)` skip inside
+      // Pannellum's source to NOT overwrite them. Passing the same
+      // calibrated numbers explicitly here sets `config.pitch`/`config.yaw`
+      // directly instead, producing the identical numeric result without
+      // depending on that implicit skip — strictly more robust, and it's
+      // what the UX brief asked for regardless of root cause.
+      viewerRef.current?.loadScene(
+        sceneId,
+        targetRoom?.defaultPitch ?? 0,
+        targetRoom?.defaultYaw ?? 0,
+        targetRoom?.defaultHfov ?? 100,
+      );
+    },
+    [rooms],
+  );
+
   return {
     containerRef,
     isLoading,
@@ -305,5 +389,6 @@ export function usePanorama(
     currentRoomId,
     retry,
     toggleFullscreen,
+    goToScene,
   };
 }
