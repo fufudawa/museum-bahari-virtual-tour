@@ -30,35 +30,108 @@ const COLLECTION_RECORDS: ReadonlyArray<{
    * above). `undefined` for every record except where a client explicitly
    * asked for one based only on what's visibly in the photo/panorama. */
   shortDescription?: string;
+  /** QR/deep-link proof-of-concept (see `/c/[collectionId]` and
+   * `Collection.primarySceneId`'s own doc comment). `undefined` for every
+   * record except COL-14, the one POC collection — not a claim about
+   * where any other physical QR sticker will actually go. Must name a
+   * scene where this collection genuinely has a placement row below,
+   * checked by hand for COL-14 (S03) rather than enforced at the type
+   * level, to keep this POC's footprint minimal. */
+  primarySceneId?: string;
 }> = [
-  { id: "COL-01", title: "Perahu Layar Kuning", filename: "IMG_20260806_114215.jpg.jpeg" },
-  { id: "COL-02", title: "Perahu Biru Panjang", filename: "IMG_20260806_114230.jpg.jpeg" },
-  { id: "COL-03", title: "Perahu Miniatur Abu-Abu", filename: "IMG_20260806_114356.jpg.jpeg" },
-  { id: "COL-04", title: "Perahu Miniatur Cokelat", filename: "IMG_20260806_114409.jpg.jpeg" },
-  { id: "COL-05", title: "Perahu Ramping Cokelat", filename: "IMG_20260806_114420.jpg.jpeg" },
-  { id: "COL-06", title: "Perahu Kayu Cokelat", filename: "IMG_20260806_114430.jpg.jpeg" },
-  { id: "COL-07", title: "Perahu Hijau", filename: "IMG_20260806_114455.jpg.jpeg" },
-  { id: "COL-08", title: "Perahu Cokelat Panjang", filename: "IMG_20260806_114504.jpg.jpeg" },
-  { id: "COL-09", title: "Perahu Layar Cokelat", filename: "IMG_20260806_114514.jpg.jpeg" },
-  { id: "COL-10", title: "Perahu Layar Kuning Cerah", filename: "IMG_20260806_114531.jpg.jpeg" },
-  { id: "COL-11", title: "Perahu Layar Putih Merah", filename: "IMG_20260806_114546.jpg.jpeg" },
+  { id: "COL-01", title: "Perahu Layar Kuning", filename: "IMG_20260806_114215.jpg.jpeg", primarySceneId: "S01" },
+  {
+    id: "COL-02",
+    title: "Perahu Biru Panjang",
+    filename: "IMG_20260806_114230.jpg.jpeg",
+    // S04 is COL-02's ORIGINAL placement (F56 — direct client request); its
+    // S03/S05 rows in DEV_COLLECTION_PLACEMENTS were added later purely via
+    // cross-scene audit (F55/F58), so S04 is the genuine primary location.
+    primarySceneId: "S04",
+  },
+  { id: "COL-03", title: "Perahu Miniatur Abu-Abu", filename: "IMG_20260806_114356.jpg.jpeg", primarySceneId: "S05" },
+  { id: "COL-04", title: "Perahu Miniatur Cokelat", filename: "IMG_20260806_114409.jpg.jpeg", primarySceneId: "S05" },
+  { id: "COL-05", title: "Perahu Ramping Cokelat", filename: "IMG_20260806_114420.jpg.jpeg", primarySceneId: "S05" },
+  { id: "COL-06", title: "Perahu Kayu Cokelat", filename: "IMG_20260806_114430.jpg.jpeg", primarySceneId: "S06" },
+  { id: "COL-07", title: "Perahu Hijau", filename: "IMG_20260806_114455.jpg.jpeg", primarySceneId: "S08" },
+  { id: "COL-08", title: "Perahu Cokelat Panjang", filename: "IMG_20260806_114504.jpg.jpeg", primarySceneId: "S06" },
+  {
+    id: "COL-09",
+    title: "Perahu Layar Cokelat",
+    filename: "IMG_20260806_114514.jpg.jpeg",
+    // S07 is COL-09's ORIGINAL placement (direct client request); its S08
+    // row was added later purely via cross-scene audit — see the
+    // "second placement for COL-09" comment on that row below.
+    primarySceneId: "S07",
+  },
+  { id: "COL-10", title: "Perahu Layar Kuning Cerah", filename: "IMG_20260806_114531.jpg.jpeg", primarySceneId: "S07" },
+  { id: "COL-11", title: "Perahu Layar Putih Merah", filename: "IMG_20260806_114546.jpg.jpeg", primarySceneId: "S08" },
   { id: "COL-12", title: "Perahu Biru Merah", filename: "IMG_20260806_114605.jpg.jpeg" },
   { id: "COL-13", title: "Perahu Merah Biru", filename: "IMG_20260806_114614.jpg.jpeg" },
-  { id: "COL-14", title: "Miniatur Kapal Layar Kuning", filename: "IMG_20260806_114620.jpg.jpeg" },
-  { id: "COL-15", title: "Miniatur Kapal Layar Putih", filename: "IMG_20260806_114625.jpg.jpeg" },
-  { id: "COL-16", title: "Perahu Layar Putih", filename: "IMG_20260806_114643.jpg.jpeg" },
-  { id: "COL-17", title: "Perahu Layar Warna-warni", filename: "IMG_20260806_114659.jpg.jpeg" },
-  { id: "COL-18", title: "Perahu Layar Putih Panjang", filename: "IMG_20260806_114713.jpg.jpeg" },
-  { id: "COL-19", title: "Kapal Miniatur Cokelat", filename: "IMG_20260806_114725.jpg.jpeg" },
-  { id: "COL-20", title: "Perahu Merah", filename: "IMG_20260806_114740.jpg.jpeg" },
-  { id: "COL-21", title: "Perahu Merah Putih", filename: "IMG_20260806_114746.jpg.jpeg" },
-  { id: "COL-22", title: "Perahu Cokelat Rangka", filename: "IMG_20260806_114752.jpg.jpeg" },
-  { id: "COL-23", title: "Perahu Kuning Panjang", filename: "IMG_20260806_114758.jpg.jpeg" },
+  {
+    id: "COL-14",
+    title: "Miniatur Kapal Layar Kuning",
+    filename: "IMG_20260806_114620.jpg.jpeg",
+    // S03 is COL-14's ORIGINAL placement (F54 — the client's own direct
+    // request), not the S04 one added later purely via cross-scene audit
+    // (F57) — see the DEV_COLLECTION_PLACEMENTS rows below for both. S03
+    // is the more genuine "primary" physical location for a QR sticker.
+    primarySceneId: "S03",
+  },
+  { id: "COL-15", title: "Miniatur Kapal Layar Putih", filename: "IMG_20260806_114625.jpg.jpeg", primarySceneId: "S12" },
+  {
+    id: "COL-16",
+    title: "Perahu Layar Putih",
+    filename: "IMG_20260806_114643.jpg.jpeg",
+    // S12 is COL-16's ORIGINAL placement; its S14 row was added later
+    // purely via cross-scene audit — see the "second placement for
+    // COL-16" comment on that row below.
+    primarySceneId: "S12",
+  },
+  {
+    id: "COL-17",
+    title: "Perahu Layar Warna-warni",
+    filename: "IMG_20260806_114659.jpg.jpeg",
+    // S14 is COL-17's ORIGINAL placement (via its F67 correction); its S15
+    // row was added later purely via cross-scene audit — see the "second
+    // placement for COL-17" comment on that row below.
+    primarySceneId: "S14",
+  },
+  { id: "COL-18", title: "Perahu Layar Putih Panjang", filename: "IMG_20260806_114713.jpg.jpeg", primarySceneId: "S15" },
+  { id: "COL-19", title: "Kapal Miniatur Cokelat", filename: "IMG_20260806_114725.jpg.jpeg", primarySceneId: "S15" },
+  { id: "COL-20", title: "Perahu Merah", filename: "IMG_20260806_114740.jpg.jpeg", primarySceneId: "S23" },
+  { id: "COL-21", title: "Perahu Merah Putih", filename: "IMG_20260806_114746.jpg.jpeg", primarySceneId: "S11" },
+  { id: "COL-22", title: "Perahu Cokelat Rangka", filename: "IMG_20260806_114752.jpg.jpeg", primarySceneId: "S11" },
+  { id: "COL-23", title: "Perahu Kuning Panjang", filename: "IMG_20260806_114758.jpg.jpeg", primarySceneId: "S10" },
   { id: "COL-24", title: "Kapal Layar Putih", filename: "IMG_20260806_114828.jpg.jpeg" },
-  { id: "COL-25", title: "Kapal Layar Salib", filename: "IMG_20260806_114836.jpg.jpeg" },
-  { id: "COL-26", title: "Perahu Dayung Hitam", filename: "IMG_20260806_114840.jpg.jpeg" },
-  { id: "COL-27", title: "Kapal Miniatur Putih", filename: "IMG_20260806_114853.jpg.jpeg" },
-  { id: "COL-28", title: "Kapal Layar Putih Besar", filename: "IMG_20260806_114929.jpg.jpeg" },
+  {
+    id: "COL-25",
+    title: "Kapal Layar Salib",
+    filename: "IMG_20260806_114836.jpg.jpeg",
+    // S19 is COL-25's ORIGINAL placement; its S18 row was added later
+    // purely via cross-scene audit — see the "second placement for
+    // COL-25" comment on that row below.
+    primarySceneId: "S19",
+  },
+  {
+    id: "COL-26",
+    title: "Perahu Dayung Hitam",
+    filename: "IMG_20260806_114840.jpg.jpeg",
+    // S19 is COL-26's ORIGINAL placement; its S18/S20 rows were added
+    // later purely via cross-scene audit — see their own "second"/"third
+    // placement for COL-26" comments below.
+    primarySceneId: "S19",
+  },
+  {
+    id: "COL-27",
+    title: "Kapal Miniatur Putih",
+    filename: "IMG_20260806_114853.jpg.jpeg",
+    // S19 is COL-27's ORIGINAL placement; its S18 row was added later
+    // purely via cross-scene audit — see the "second placement for
+    // COL-27" comment on that row below.
+    primarySceneId: "S19",
+  },
+  { id: "COL-28", title: "Kapal Layar Putih Besar", filename: "IMG_20260806_114929.jpg.jpeg", primarySceneId: "S32" },
   // COL-29/30/31: all 28 originally-supplied photos (COL-01..COL-28) are
   // now each assigned to at least one live placement, so these 3 new S20
   // objects can't reuse an unused id the way every prior addition in this
@@ -129,7 +202,13 @@ const COLLECTION_RECORDS: ReadonlyArray<{
   // title in this file — no history/provenance claimed, nothing verified
   // by the museum yet. Same situation as COL-29..62 (no unused original id
   // left) — new record rather than reusing an already-used id.
-  { id: "COL-63", title: "Kapal Layar Besar Bertiang Tiga", filename: "IMG_20260806_114929.jpg.jpeg" },
+  {
+    id: "COL-63",
+    title: "Kapal Layar Besar Bertiang Tiga",
+    filename: "IMG_20260806_114929.jpg.jpeg",
+    // QR 31-final set (client selection) — S23 is its only placement.
+    primarySceneId: "S23",
+  },
   // COL-64: 1 new S25 object (a single-mast wooden ship with a plain white
   // sail, on its own dedicated blue pedestal, visible right at S25's own
   // default landing — yaw -15.53, untouched). Checked against S25's
@@ -147,6 +226,8 @@ const COLLECTION_RECORDS: ReadonlyArray<{
     title: "Kapal Layar Putih",
     filename: "IMG_20260806_114929.jpg.jpeg",
     shortDescription: "Model kapal kayu bertiang satu dengan layar putih, dipajang di atas pedestal biru.",
+    // QR 31-final set (client selection) — S25 is its only placement.
+    primarySceneId: "S25",
   },
   // COL-65/66: 2 new S25 objects, a SEPARATE blue pedestal from COL-64's own
   // (~100-115° apart, confirmed via live 360° scan — COL-64's pedestal only
@@ -183,12 +264,16 @@ const COLLECTION_RECORDS: ReadonlyArray<{
     title: "Perahu Atap Merah Biru",
     filename: "IMG_20260806_114929.jpg.jpeg",
     shortDescription: "Model perahu panjang berlambung merah-biru dengan atap/kabin kayu cokelat, di atas pedestal hitam.",
+    // QR 31-final set (client selection) — S29 is its only placement.
+    primarySceneId: "S29",
   },
   {
     id: "COL-68",
     title: "Kapal Layar Besar Cokelat",
     filename: "IMG_20260806_114929.jpg.jpeg",
     shortDescription: "Model kapal kayu besar berwarna cokelat dengan banyak layar putih, di atas pedestal putih-kayu.",
+    // QR 31-final set (client selection) — S29 is its only placement.
+    primarySceneId: "S29",
   },
   // COL-69/70: 2 new S30 objects, found via a live 360° scan of S30 away
   // from its own default landing (yaw 34.09, untouched). Checked against
@@ -205,6 +290,8 @@ const COLLECTION_RECORDS: ReadonlyArray<{
     title: "Perahu Oranye Putih",
     filename: "IMG_20260806_114929.jpg.jpeg",
     shortDescription: "Model perahu kecil memanjang berwarna oranye-putih, di atas pedestal hitam.",
+    // QR 31-final set (client selection) — S30 is its only placement.
+    primarySceneId: "S30",
   },
   {
     id: "COL-70",
@@ -227,6 +314,8 @@ const COLLECTION_RECORDS: ReadonlyArray<{
     title: "Kapal Rangka Kayu Vitrin",
     filename: "IMG_20260806_114929.jpg.jpeg",
     shortDescription: "Model kapal berbahan rangka kayu anyaman dengan kabin kecil, di atas pedestal biru.",
+    // QR 31-final set (client selection) — S31 is its only placement.
+    primarySceneId: "S31",
   },
   {
     id: "COL-72",
@@ -236,25 +325,30 @@ const COLLECTION_RECORDS: ReadonlyArray<{
   },
 ];
 
-export const collections: Collection[] = COLLECTION_RECORDS.map(({ id, title, filename, shortDescription }) => {
-  const path = `/collections/${filename}`;
-  return {
-    id,
-    title,
-    coverImage: path,
-    detailImage: path,
-    // shortDescription: passed through only when a record explicitly sets
-    // one (currently just COL-64) — `undefined` for every other record,
-    // same restraint as always: no official or draft copy exists for them
-    // yet (F4 brief: do not fabricate). The UI hides or neutrally labels
-    // the missing description rather than inventing one — see
-    // CollectionPeek / CollectionDetail.
-    shortDescription,
-    // description / officialName / officialDescription deliberately
-    // omitted for every record, COL-64 included — `shortDescription` above
-    // is a plain visual-only line, not a full/official description.
-  };
-});
+export const collections: Collection[] = COLLECTION_RECORDS.map(
+  ({ id, title, filename, shortDescription, primarySceneId }) => {
+    const path = `/collections/${filename}`;
+    return {
+      id,
+      title,
+      coverImage: path,
+      detailImage: path,
+      // shortDescription: passed through only when a record explicitly sets
+      // one (currently just COL-64) — `undefined` for every other record,
+      // same restraint as always: no official or draft copy exists for them
+      // yet (F4 brief: do not fabricate). The UI hides or neutrally labels
+      // the missing description rather than inventing one — see
+      // CollectionPeek / CollectionDetail.
+      shortDescription,
+      // description / officialName / officialDescription deliberately
+      // omitted for every record, COL-64 included — `shortDescription` above
+      // is a plain visual-only line, not a full/official description.
+      // primarySceneId: passed through only for COL-14 (QR POC) — see its
+      // own doc comment on `Collection` for what this does and doesn't mean.
+      primarySceneId,
+    };
+  },
+);
 
 /**
  * F3A: real Museum Bahari panorama walkthrough — 32 scenes, strictly
@@ -1792,6 +1886,29 @@ export function getRoomById(roomId: string): TourRoom | undefined {
 
 export function getCollectionById(collectionId: string): Collection | undefined {
   return collections.find((collection) => collection.id === collectionId);
+}
+
+/**
+ * QR/deep-link support: the yaw/pitch a `collectionId` is actually placed
+ * at within one specific `sceneId` — read from `rooms` (the public,
+ * post-processing hotspot list), never from the private
+ * `DEV_COLLECTION_PLACEMENTS` array directly, same "derive from `rooms`,
+ * don't keep a second hand-maintained list" rule `getZoneForSceneId`/
+ * `buildZoneCollections` already follow above. Returns `undefined` if this
+ * collection has no collection-hotspot in that scene at all (wrong scene,
+ * dangling `primarySceneId`, or scene excluded from navigation) — callers
+ * must treat that as "no placement to aim the camera at", not throw.
+ */
+export function getCollectionPlacement(
+  sceneId: string,
+  collectionId: string,
+): { yaw: number; pitch: number } | undefined {
+  const room = getRoomById(sceneId);
+  if (!room) return undefined;
+  const hotspot = room.hotspots.find(
+    (h) => h.type === "collection" && h.collectionId === collectionId,
+  );
+  return hotspot ? { yaw: hotspot.yaw, pitch: hotspot.pitch } : undefined;
 }
 
 /**

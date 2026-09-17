@@ -367,6 +367,14 @@ export function createPannellumTourViewer(
   collections: Collection[],
   initialRoomId: string,
   hooks: PannellumHotspotMountHooks,
+  // QR/deep-link proof-of-concept (see `/c/[collectionId]`): overrides
+  // ONLY `initialRoomId`'s own landing pitch/yaw/hfov in the scene
+  // registry built below — every other scene's `defaultYaw`/`defaultPitch`/
+  // `defaultHfov` (and this same scene's own, for any LATER visit via
+  // `goToScene()`/Next/Previous) is completely untouched, since `rooms`
+  // itself is never mutated. This is additive: every existing caller that
+  // omits it gets byte-identical behavior to before.
+  initialCameraOverride?: { pitch: number; yaw: number; hfov?: number },
 ): PannellumViewerInstance {
   if (!window.pannellum) {
     throw new Error("createPannellumTourViewer() called before loadPannellumRuntime() resolved");
@@ -378,8 +386,13 @@ export function createPannellumTourViewer(
   // *invoked* later, on an actual tap — by then this will be set.
   const viewerRef: ViewerRef = { current: undefined };
 
+  // Applied below only to `scenes[initialRoomId]` — see this function's
+  // own `initialCameraOverride` param doc comment.
+  const isInitialCameraOverridden = Boolean(initialCameraOverride);
+
   const scenes: Record<string, PannellumSceneConfig> = {};
   for (const room of rooms) {
+    const useOverride = isInitialCameraOverridden && room.id === initialRoomId;
     scenes[room.id] = {
       type: "equirectangular",
       panorama: room.panoramaUrl,
@@ -393,8 +406,18 @@ export function createPannellumTourViewer(
       // Next and Previous buttons call it (see usePanorama.tsx's
       // `goToScene`) — so one calibrated value here serves both
       // directions' landing view.
-      pitch: room.defaultPitch ?? 0,
-      yaw: room.defaultYaw ?? 0,
+      //
+      // `useOverride` (QR/deep-link POC) replaces just this one scene's
+      // landing pitch/yaw with the collection placement's own coordinates
+      // — ONLY for this specific tour-build call's initial scene, so a
+      // visitor arriving via `/c/COL-14` lands already facing the exhibit,
+      // no post-load camera swing. `room.defaultPitch`/`defaultYaw`
+      // themselves are never modified — a later Next/Previous hop back to
+      // this same scene still uses its normal calibrated forward view via
+      // `goToScene()`, which reads `TourRoom.defaultPitch`/`defaultYaw`
+      // directly, not this registry entry.
+      pitch: useOverride ? initialCameraOverride!.pitch : (room.defaultPitch ?? 0),
+      yaw: useOverride ? initialCameraOverride!.yaw : (room.defaultYaw ?? 0),
       // F41 fix: this was hardcoded to 100, unlike pitch/yaw above — a real
       // gap (found while auditing S23's landing-at-0 report) that only ever
       // mattered for whichever scene loads as the tour's initial scene
@@ -403,7 +426,7 @@ export function createPannellumTourViewer(
       // already passes `defaultHfov` explicitly for every Next/Previous
       // hop. Harmless today since the current initial scene (S01) has no
       // HFOV override, but was silently discarding one had it needed it.
-      hfov: room.defaultHfov ?? 100,
+      hfov: useOverride ? (initialCameraOverride!.hfov ?? room.defaultHfov ?? 100) : (room.defaultHfov ?? 100),
       // F7 (UX pass): navigation hotspots are no longer rendered inside the
       // panorama sphere — replaced by a fixed-position Previous/Next
       // control (see NavigationControls, mounted by PanoramaViewer, driven

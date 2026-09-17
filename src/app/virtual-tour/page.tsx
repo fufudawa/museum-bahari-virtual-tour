@@ -1,9 +1,16 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useCallback, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import type { Collection, CollectionSheetState, Hotspot } from "@/types/virtual-tour";
-import { collections, getCollectionById, getZoneCollections, getZoneForSceneId, rooms } from "@/data/mock-tour";
+import {
+  collections,
+  getCollectionById,
+  getCollectionPlacement,
+  getZoneCollections,
+  getZoneForSceneId,
+  rooms,
+} from "@/data/mock-tour";
 import { PanoramaViewer } from "@/components/virtual-tour/PanoramaViewer";
 import { RoomControls } from "@/components/virtual-tour/RoomControls";
 import { ZoneCollectionsChip } from "@/components/virtual-tour/ZoneCollectionsChip";
@@ -14,6 +21,37 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { useAmbience } from "@/hooks/useAmbience";
 
 const AMBIENCE_URL = "/audio/museum-ambience.mp3";
+
+/**
+ * QR/deep-link proof-of-concept (`/c/[collectionId]` redirects here as
+ * `?collection=COL-14`). Resolved ONCE, synchronously, from whatever the
+ * URL's `collection` param is on this page's very first render — see
+ * `VirtualTourPage`'s own `useState(() => ...)` call sites below for why
+ * that has to be a lazy initializer, same pattern `currentRoomId` already
+ * uses for `rooms[0].id`. `primarySceneId` (not yaw/pitch) is the only
+ * thing the URL ever points at; the actual camera numbers still come from
+ * `getCollectionPlacement`, i.e. straight out of
+ * `DEV_COLLECTION_PLACEMENTS` — the QR flow never carries yaw/pitch of its
+ * own. Returns the tour's normal `rooms[0].id` (and no camera override) for
+ * every case that isn't a fully-resolved, placed COL-14-style deep link: no
+ * `?collection=` param, an unknown id, or a known id with no
+ * `primarySceneId`/no matching placement yet — normal `/virtual-tour`
+ * behavior must stay byte-identical to before this feature existed.
+ */
+function resolveDeepLinkEntry(collectionId: string | null): {
+  initialRoomId: string;
+  initialCameraOverride?: { pitch: number; yaw: number };
+} {
+  if (!collectionId) return { initialRoomId: rooms[0].id };
+
+  const collection = getCollectionById(collectionId);
+  if (!collection?.primarySceneId) return { initialRoomId: rooms[0].id };
+
+  const placement = getCollectionPlacement(collection.primarySceneId, collectionId);
+  if (!placement) return { initialRoomId: rooms[0].id };
+
+  return { initialRoomId: collection.primarySceneId, initialCameraOverride: placement };
+}
 
 /**
  * F1 wired the full data path —
@@ -39,10 +77,23 @@ const AMBIENCE_URL = "/audio/museum-ambience.mp3";
  * so background hotspots can't be focused/dragged into confusing states
  * underneath an open dialog.
  */
-export default function VirtualTourPage() {
+function VirtualTourPageInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
-  const [currentRoomId, setCurrentRoomId] = useState(rooms[0].id);
+  // QR/deep-link (client request): resolved once, from the URL as it was
+  // on first render — see `resolveDeepLinkEntry`'s own doc comment for why
+  // a lazy `useState` initializer, not a `useMemo`/plain read, is what
+  // "compute once" has to mean here (mirrors how `currentRoomId` below
+  // already seeds itself from `rooms[0].id` once and never re-derives).
+  const [{ initialRoomId, initialCameraOverride }] = useState(() =>
+    resolveDeepLinkEntry(searchParams.get("collection")),
+  );
+  // Read once alongside the above, for the "open the sheet once loaded"
+  // effect further down — same one-shot-at-mount contract.
+  const [deepLinkCollectionId] = useState(() => searchParams.get("collection"));
+
+  const [currentRoomId, setCurrentRoomId] = useState(initialRoomId);
   const [selectedCollection, setSelectedCollection] = useState<Collection | null>(
     null,
   );
@@ -89,6 +140,21 @@ export default function VirtualTourPage() {
     },
     [openCollection],
   );
+
+  // QR/deep-link: opens the SAME CollectionSheet the physical hotspot/zone
+  // drawer already open (via the same `openCollection`, no separate sheet
+  // logic) — but only once the panorama has actually finished its first
+  // load (`PanoramaViewer`'s own `onLoad`, which itself only ever fires
+  // once), so the sheet doesn't appear before the scene is visible. A
+  // `useRef` guard (not just relying on `onLoad` firing once) makes this
+  // resilient even if a future change ever calls `onLoad` more than once.
+  const hasOpenedDeepLinkCollection = useRef(false);
+  const handlePanoramaLoad = useCallback(() => {
+    if (!deepLinkCollectionId) return;
+    if (hasOpenedDeepLinkCollection.current) return;
+    hasOpenedDeepLinkCollection.current = true;
+    openCollection(deepLinkCollectionId);
+  }, [deepLinkCollectionId, openCollection]);
 
   // Zone-persistent collection access (client request): a SEPARATE concern
   // from the physical orange hotspots above, which are untouched. Zone
@@ -155,10 +221,17 @@ export default function VirtualTourPage() {
         // navigation-driven state back in here would re-trigger the tour
         // viewer's init effect (see usePanorama.tsx) on every hotspot tap,
         // destroying and recreating the whole viewer exactly like F2A did
-        // — the thing F2B's multi-scene tour exists to avoid.
-        initialRoomId={rooms[0].id}
+        // — the thing F2B's multi-scene tour exists to avoid. Normally
+        // `rooms[0].id`; a resolved QR/deep-link (see `resolveDeepLinkEntry`
+        // above) is the only thing that ever makes this anything else.
+        initialRoomId={initialRoomId}
+        // QR/deep-link only — `undefined` for every normal `/virtual-tour`
+        // visit, in which case `PanoramaViewer`/`usePanorama` behave exactly
+        // as before this feature existed.
+        initialCameraOverride={initialCameraOverride}
         onRoomChange={handleRoomChange}
         onHotspotActivate={handleHotspotActivate}
+        onLoad={handlePanoramaLoad}
         suspendInteraction={sheetState !== "closed" || isZoneDrawerVisible}
       />
 
@@ -190,5 +263,28 @@ export default function VirtualTourPage() {
         onCollapseTranscript={() => setSheetState("full")}
       />
     </main>
+  );
+}
+
+/**
+ * `VirtualTourPageInner` calls `useSearchParams()` (for the QR/deep-link
+ * `?collection=` param), which Next.js requires a `<Suspense>` boundary
+ * around in a Client Component page — otherwise a production build fails
+ * with "Missing Suspense boundary with useSearchParams". The fallback is
+ * the same `LoadingState` the page already showed for its own (currently
+ * always-false) `isLoading` branch, so a visitor never sees a different
+ * loading affordance depending on which one happens to apply.
+ */
+export default function VirtualTourPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="flex min-h-dvh flex-1">
+          <LoadingState />
+        </main>
+      }
+    >
+      <VirtualTourPageInner />
+    </Suspense>
   );
 }

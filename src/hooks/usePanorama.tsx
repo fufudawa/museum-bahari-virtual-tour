@@ -75,6 +75,14 @@ export function usePanorama(
   collections: Collection[],
   initialRoomId: string,
   onCollectionActivate?: (hotspot: CollectionHotspotData) => void,
+  // QR/deep-link proof-of-concept — forwarded as-is to
+  // `createPannellumTourViewer`'s own param of the same name (see its doc
+  // comment for exactly what this does/doesn't touch). Deliberately NOT
+  // part of the tour-creation effect's dependency array below, same as
+  // `rooms`/`collections` themselves: it only matters for the ONE-TIME
+  // initial viewer build tied to this `initialRoomId`, read via closure at
+  // that moment, not something that should ever re-trigger tour creation.
+  initialCameraOverride?: { pitch: number; yaw: number; hfov?: number },
 ): UsePanoramaResult {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<PannellumViewerInstance | null>(null);
@@ -284,6 +292,7 @@ export function usePanorama(
               );
             },
           },
+          initialCameraOverride,
         );
         viewerRef.current = viewer;
 

@@ -33,6 +33,15 @@ type PanoramaViewerProps = {
    * dialog is open on top of it (F3 accessibility requirement).
    */
   suspendInteraction?: boolean;
+  /** QR/deep-link proof-of-concept — forwarded as-is to `usePanorama`. See
+   * `lib/pannellum.ts`'s `createPannellumTourViewer` for what this does. */
+  initialCameraOverride?: { pitch: number; yaw: number; hfov?: number };
+  /** Fires exactly once, the moment the tour's very first scene finishes
+   * loading (mirrors `isLoading` flipping false — see usePanorama.tsx's own
+   * doc comment: "True only for the tour's very first load"). Used by the
+   * QR/deep-link flow to open a `CollectionSheet` only once the panorama is
+   * actually visible, not before. */
+  onLoad?: () => void;
 };
 
 /**
@@ -50,17 +59,27 @@ export function PanoramaViewer({
   onRoomChange,
   onHotspotActivate,
   suspendInteraction = false,
+  initialCameraOverride,
+  onLoad,
 }: PanoramaViewerProps) {
   const { containerRef, isLoading, isTransitioning, error, currentRoomId, retry, goToScene } = usePanorama(
     rooms,
     collections,
     initialRoomId,
     (hotspot: CollectionHotspotData) => onHotspotActivate?.(hotspot),
+    initialCameraOverride,
   );
 
   useEffect(() => {
     onRoomChange?.(currentRoomId);
   }, [currentRoomId, onRoomChange]);
+
+  // Fires once, exactly when the tour's first scene finishes loading — see
+  // this component's own `onLoad` prop doc comment.
+  useEffect(() => {
+    if (!isLoading) onLoad?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- deliberately NOT keyed on onLoad identity: this must fire once per isLoading true->false edge, not re-fire if the caller passes a new callback identity on a later render while isLoading is already false.
+  }, [isLoading]);
 
   // F7: only shown once a scene change has stayed "transitioning" longer
   // than a deliberate animation reasonably takes — see the constant's doc

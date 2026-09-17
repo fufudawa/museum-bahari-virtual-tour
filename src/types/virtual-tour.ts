@@ -126,6 +126,20 @@ export type Collection = {
 
   audioUrl?: string;
   transcript?: string;
+
+  /**
+   * QR/deep-link entry point (see `/c/[collectionId]`): which scene's
+   * placement is "the" one a physical QR sticker on this object should
+   * land on. Purely a POINTER — it does NOT carry yaw/pitch itself; those
+   * still come from the matching row in `DEV_COLLECTION_PLACEMENTS` (see
+   * `getCollectionPlacement` in `data/mock-tour.ts`). A collection may
+   * still have placements in other scenes (unaffected) — this only picks
+   * which one is "primary" for a QR scan. `undefined` (the default for
+   * every collection except the QR proof-of-concept) means no curated
+   * entry scene yet; deep-linking falls back to the tour's normal first
+   * scene instead of guessing.
+   */
+  primarySceneId?: string;
 };
 
 /**
