@@ -84,6 +84,28 @@ body {
   display: none !important;
 }
 
+/*
+ * F11: Pannellum's OWN built-in "Loading..." box (spinner + progress bar,
+ * `.pnlm-load-box` — see node_modules/pannellum/src/js/pannellum.js's
+ * `load()`) is set to `display: inline` unconditionally at the START of
+ * EVERY `loadScene()` call, not just the tour's first load — i.e. on every
+ * Next/Previous hop, completely independent of this app's own React
+ * loading state (`isLoading`/`isTransitioning` in usePanorama.tsx). That
+ * was the actual source of the "Loading... [progress bar]" box the UX
+ * brief asked to remove: our own custom overlays (`LoadingState`, the
+ * small slow-transition badge in PanoramaViewer.tsx) were never the
+ * problem — Pannellum's native one, which nothing in this codebase had
+ * ever hidden, was rendering on top of/alongside them. Hidden the same
+ * light-touch, CSS-only way as the orientation button above: this does
+ * NOT touch `sceneFadeDuration` (still 0, still disabled — see
+ * lib/pannellum.ts's module doc comment for why re-enabling it is unsafe)
+ * or any scene-loading JS logic; `load()`/`init()` still run and load the
+ * image exactly as before, this only stops the box from ever painting.
+ */
+.pnlm-container .pnlm-load-box {
+  display: none !important;
+}
+
 .pnlm-container .pnlm-controls-container {
   top: auto !important;
   bottom: 16px !important;

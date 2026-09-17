@@ -1,14 +1,19 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Collection, CollectionSheetState, Hotspot } from "@/types/virtual-tour";
-import { collections, getCollectionById, rooms } from "@/data/mock-tour";
+import { collections, getCollectionById, getZoneCollections, getZoneForSceneId, rooms } from "@/data/mock-tour";
 import { PanoramaViewer } from "@/components/virtual-tour/PanoramaViewer";
 import { RoomControls } from "@/components/virtual-tour/RoomControls";
+import { ZoneCollectionsChip } from "@/components/virtual-tour/ZoneCollectionsChip";
+import { ZoneCollectionsDrawer } from "@/components/virtual-tour/ZoneCollectionsDrawer";
 import { CollectionSheet } from "@/components/collection/CollectionSheet";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
+import { useAmbience } from "@/hooks/useAmbience";
+
+const AMBIENCE_URL = "/audio/museum-ambience.mp3";
 
 /**
  * F1 wired the full data path —
@@ -42,7 +47,20 @@ export default function VirtualTourPage() {
     null,
   );
   const [sheetState, setSheetState] = useState<CollectionSheetState>("closed");
-  const [isAmbienceOn, setIsAmbienceOn] = useState(true);
+  // Background ambience (client request): one looping element for the
+  // whole tour session, owned by this hook — see its own doc comment for
+  // why it lives here (page level, not per-room) and never restarts on
+  // scene navigation. `isAmbienceOn`/`onToggleAmbience` below now mirror
+  // the element's REAL play state (never an assumed/optimistic flag), so
+  // RoomControls' existing speaker button needs no changes of its own.
+  const { isPlaying: isAmbienceOn, toggle: toggleAmbience } = useAmbience(AMBIENCE_URL);
+  const [isZoneDrawerOpen, setIsZoneDrawerOpen] = useState(false);
+  // Reported by ZoneCollectionsDrawer itself, not derived from
+  // `isZoneDrawerOpen` — stays true for the drawer's whole closing
+  // animation, only flipping false once it has actually finished and
+  // unmounted, so the panorama stays frozen for the full close transition
+  // (see `suspendInteraction` below), not just until the close tap fires.
+  const [isZoneDrawerVisible, setIsZoneDrawerVisible] = useState(false);
   const [isLoading] = useState(false);
   const [error] = useState<string | null>(null);
 
@@ -50,16 +68,47 @@ export default function VirtualTourPage() {
     setCurrentRoomId(roomId);
   }, []);
 
-  const handleHotspotActivate = useCallback((hotspot: Hotspot) => {
-    if (hotspot.type !== "collection") return;
-    // Always opens the sheet, even if the lookup misses — a hotspot with
-    // a dangling `collectionId` must not just silently do nothing on tap.
+  // Shared by the physical orange hotspot path (below) and the
+  // zone-persistent drawer (see ZoneCollectionsDrawer's onSelect) — a
+  // collection opens the exact same sheet regardless of which of the two
+  // ever-coexisting entry points it came from.
+  const openCollection = useCallback((collectionId: string) => {
+    // Always opens the sheet, even if the lookup misses — an entry point
+    // with a dangling `collectionId` must not just silently do nothing.
     // CollectionSheet renders a "Koleksi tidak ditemukan." panel when
     // `collection` is null but the sheet isn't closed (see its guard).
-    const collection = getCollectionById(hotspot.collectionId) ?? null;
+    const collection = getCollectionById(collectionId) ?? null;
     setSelectedCollection(collection);
     setSheetState("peek");
   }, []);
+
+  const handleHotspotActivate = useCallback(
+    (hotspot: Hotspot) => {
+      if (hotspot.type !== "collection") return;
+      openCollection(hotspot.collectionId);
+    },
+    [openCollection],
+  );
+
+  // Zone-persistent collection access (client request): a SEPARATE concern
+  // from the physical orange hotspots above, which are untouched. Zone
+  // membership and its collection list are both derived from `rooms`
+  // itself (see mock-tour.ts's getZoneForSceneId/getZoneCollections) —
+  // no second, hand-maintained "which collection belongs to which zone"
+  // list exists here to drift out of sync.
+  const currentZone = getZoneForSceneId(currentRoomId);
+  const zoneCollections = useMemo(
+    () => (currentZone ? getZoneCollections(currentZone) : []),
+    [currentZone],
+  );
+
+  const handleZoneCollectionSelect = useCallback(
+    (collectionId: string) => {
+      setIsZoneDrawerOpen(false);
+      openCollection(collectionId);
+    },
+    [openCollection],
+  );
 
   if (isLoading) {
     return (
@@ -110,13 +159,26 @@ export default function VirtualTourPage() {
         initialRoomId={rooms[0].id}
         onRoomChange={handleRoomChange}
         onHotspotActivate={handleHotspotActivate}
-        suspendInteraction={sheetState !== "closed"}
+        suspendInteraction={sheetState !== "closed" || isZoneDrawerVisible}
       />
 
       <RoomControls
         onExit={() => router.push("/")}
-        onToggleAmbience={() => setIsAmbienceOn((on) => !on)}
+        onToggleAmbience={toggleAmbience}
         isAmbienceOn={isAmbienceOn}
+      />
+
+      <ZoneCollectionsChip
+        count={zoneCollections.length}
+        onClick={() => setIsZoneDrawerOpen(true)}
+      />
+
+      <ZoneCollectionsDrawer
+        isOpen={isZoneDrawerOpen}
+        collections={zoneCollections}
+        onSelect={handleZoneCollectionSelect}
+        onClose={() => setIsZoneDrawerOpen(false)}
+        onVisibilityChange={setIsZoneDrawerVisible}
       />
 
       <CollectionSheet

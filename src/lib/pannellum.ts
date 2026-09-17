@@ -86,6 +86,9 @@ type PannellumSceneConfig = {
   yaw: number;
   hfov: number;
   hotSpots: PannellumHotSpotConfig[];
+  /** F10: source-photo roll correction, only present for a scene that
+   * actually needs one — see TourRoom.defaultRoll. */
+  roll?: number;
 };
 
 type PannellumTourConfig = {
@@ -275,6 +278,13 @@ export type PannellumHotspotMountHooks = {
     hotspot: Extract<Hotspot, { type: "collection" }>,
     collection: Collection | undefined,
   ) => void;
+  /** F32: mounts a `scene-link` hotspot — see its doc comment in
+   * types/virtual-tour.ts for why this is a separate hotspot type/hook
+   * from `mountNavigationHotspot` rather than reusing it. */
+  mountSceneLinkHotspot: (
+    container: HTMLElement,
+    hotspot: Extract<Hotspot, { type: "scene-link" }>,
+  ) => void;
 };
 
 /** Mutable holder so hotspot closures can reach the viewer instance that
@@ -304,6 +314,23 @@ function buildHotspotConfig(
         hooks.mountNavigationHotspot(div, hotspot, hotspot.direction, () => {
           viewerRef.current?.loadScene(hotspot.targetRoomId);
         });
+      },
+    };
+  }
+
+  if (hotspot.type === "scene-link") {
+    return {
+      id: hotspot.id,
+      pitch: hotspot.pitch,
+      yaw: hotspot.yaw,
+      // "info", not "scene" — same reasoning as the collection branch
+      // below: no `sceneId` means Pannellum attaches no click behavior of
+      // its own, so this stays purely React-driven via `loadScene()`
+      // inside `mountSceneLinkHotspot`.
+      type: "info",
+      cssClass: "pnlm-hotspot-mount",
+      createTooltipFunc: (div) => {
+        hooks.mountSceneLinkHotspot(div, hotspot);
       },
     };
   }
@@ -356,12 +383,39 @@ export function createPannellumTourViewer(
     scenes[room.id] = {
       type: "equirectangular",
       panorama: room.panoramaUrl,
-      pitch: 0,
-      yaw: 0,
-      hfov: 100,
-      hotSpots: room.hotspots.map((hotspot) =>
-        buildHotspotConfig(hotspot, collections, hooks, viewerRef),
-      ),
+      // F10: per-scene calibrated forward orientation, not a generic
+      // constant — see TourRoom.defaultYaw/defaultPitch/defaultRoll (data
+      // model) and data/mock-tour.ts's SCENE_FORWARD_YAW (calibration
+      // values + method) for the full story. This is the ONLY place these
+      // fields take effect: Pannellum reads a scene's `pitch`/`yaw` as its
+      // landing view whenever `loadScene(sceneId)` is called without
+      // explicit pitch/yaw args, which is how both NavigationControls'
+      // Next and Previous buttons call it (see usePanorama.tsx's
+      // `goToScene`) — so one calibrated value here serves both
+      // directions' landing view.
+      pitch: room.defaultPitch ?? 0,
+      yaw: room.defaultYaw ?? 0,
+      // F41 fix: this was hardcoded to 100, unlike pitch/yaw above — a real
+      // gap (found while auditing S23's landing-at-0 report) that only ever
+      // mattered for whichever scene loads as the tour's initial scene
+      // (Pannellum reads THIS registry entry directly for that one, not
+      // `loadScene()` — see the F10 comment above), since `goToScene`
+      // already passes `defaultHfov` explicitly for every Next/Previous
+      // hop. Harmless today since the current initial scene (S01) has no
+      // HFOV override, but was silently discarding one had it needed it.
+      hfov: room.defaultHfov ?? 100,
+      // F7 (UX pass): navigation hotspots are no longer rendered inside the
+      // panorama sphere — replaced by a fixed-position Previous/Next
+      // control (see NavigationControls, mounted by PanoramaViewer, driven
+      // by `previousSceneId`/`nextSceneId` directly rather than by a
+      // hotspot). Collection hotspots are unaffected. `mountNavigationHotspot`
+      // stays part of `PannellumHotspotMountHooks` for type stability, it's
+      // just never invoked now that no hotspot of type "navigation" ever
+      // reaches `buildHotspotConfig`.
+      hotSpots: room.hotspots
+        .filter((hotspot) => hotspot.type !== "navigation")
+        .map((hotspot) => buildHotspotConfig(hotspot, collections, hooks, viewerRef)),
+      ...(room.defaultRoll !== undefined ? { roll: room.defaultRoll } : {}),
     };
   }
 

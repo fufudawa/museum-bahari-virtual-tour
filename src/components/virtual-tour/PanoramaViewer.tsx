@@ -1,11 +1,23 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import type { Collection, CollectionHotspot as CollectionHotspotData, Hotspot, TourRoom } from "@/types/virtual-tour";
 import { usePanorama } from "@/hooks/usePanorama";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { SceneTransition } from "./SceneTransition";
+import { NavigationControls } from "./NavigationControls";
+
+/**
+ * F7: how long a scene change is allowed to stay in its "transitioning"
+ * state (see `isTransitioning` below) before this treats it as a genuinely
+ * slow/not-yet-preloaded load rather than the deliberate ~350ms transition
+ * animation, and shows a (small, non-blocking) loading affordance. An
+ * adjacent scene that was already preloaded (see usePanorama's
+ * `preloadAdjacentScenes`) resolves the `load` event well under this, so
+ * the indicator never appears on a normal, already-preloaded hop.
+ */
+const SLOW_TRANSITION_INDICATOR_DELAY_MS = 600;
 
 type PanoramaViewerProps = {
   rooms: TourRoom[];
@@ -39,14 +51,51 @@ export function PanoramaViewer({
   onHotspotActivate,
   suspendInteraction = false,
 }: PanoramaViewerProps) {
-  const { containerRef, isLoading, isTransitioning, error, currentRoomId, retry } =
-    usePanorama(rooms, collections, initialRoomId, (hotspot: CollectionHotspotData) =>
-      onHotspotActivate?.(hotspot),
-    );
+  const { containerRef, isLoading, isTransitioning, error, currentRoomId, retry, goToScene } = usePanorama(
+    rooms,
+    collections,
+    initialRoomId,
+    (hotspot: CollectionHotspotData) => onHotspotActivate?.(hotspot),
+  );
 
   useEffect(() => {
     onRoomChange?.(currentRoomId);
   }, [currentRoomId, onRoomChange]);
+
+  // F7: only shown once a scene change has stayed "transitioning" longer
+  // than a deliberate animation reasonably takes — see the constant's doc
+  // comment above. Never set on the very first tour load (`isLoading`
+  // covers that with its own, unrelated overlay).
+  //
+  // The reset-on-new-transition below runs during render, not inside an
+  // effect — React's documented pattern for "adjust state when a prop
+  // changes" (comparing against a mirrored previous-render value and
+  // calling setState conditionally while rendering is explicitly safe;
+  // see https://react.dev/learn/you-might-not-need-an-effect). Calling
+  // `setState` unconditionally inside an effect body instead — the more
+  // obvious way to write this — trips `react-hooks/set-state-in-effect`
+  // (a synchronous setState with no actual async work), and reading a ref
+  // during render to work around that trips `react-hooks/refs` instead.
+  // This sidesteps both: `showSlowIndicator` is set to `true` only from
+  // the genuinely-async `setTimeout` callback below, and reset to `false`
+  // only at the exact render where a new transition starts.
+  const [showSlowIndicator, setShowSlowIndicator] = useState(false);
+  const [trackedIsTransitioning, setTrackedIsTransitioning] = useState(isTransitioning);
+  if (isTransitioning !== trackedIsTransitioning) {
+    setTrackedIsTransitioning(isTransitioning);
+    // Reset on BOTH edges: false->true so a new transition starts its own
+    // fresh delay window, and true->false so the indicator doesn't linger
+    // after a slow transition has actually finished loading.
+    setShowSlowIndicator(false);
+  }
+
+  useEffect(() => {
+    if (!isTransitioning) return;
+    const timer = setTimeout(() => setShowSlowIndicator(true), SLOW_TRANSITION_INDICATOR_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [isTransitioning]);
+
+  const currentRoom = rooms.find((room) => room.id === currentRoomId);
 
   return (
     <SceneTransition>
@@ -80,12 +129,59 @@ export function PanoramaViewer({
           // so driving the opacity dip through `style` instead leaves any
           // classes/inline styles Pannellum manages on this node alone
           // (Pannellum sets `style.touchAction` here too).
+          //
+          // F7: `transform`/`filter` layer a slight forward push (scale up)
+          // and blur on top of the existing opacity dip — same
+          // style-diffing safety as the opacity-only version above, just
+          // two more properties Pannellum never touches itself. The intent
+          // (per the UX brief) is a scene change that reads as the camera
+          // moving forward, not a screen unloading/reloading — Pannellum's
+          // own built-in `sceneFadeDuration` is deliberately NOT used for
+          // this (see lib/pannellum.ts's module doc comment: its
+          // canvas-snapshot cross-fade hangs `loadScene()` forever in this
+          // environment), so this stays a plain CSS transition driven by
+          // React state, with no snapshot/canvas work involved.
           className="absolute inset-0"
           style={{
-            opacity: isTransitioning ? 0.4 : 1,
-            transition: "opacity 300ms ease",
+            opacity: isTransitioning ? 0.55 : 1,
+            transform: isTransitioning ? "scale(1.045)" : "scale(1)",
+            filter: isTransitioning ? "blur(5px)" : "blur(0px)",
+            transition: "opacity 350ms ease, transform 350ms ease, filter 350ms ease",
           }}
         />
+
+        <NavigationControls
+          previousSceneId={currentRoom?.previousSceneId}
+          nextSceneId={currentRoom?.nextSceneId}
+          // F11: only ever consulted by NavigationControls when
+          // `nextSceneId` is falsy (the actual end of the chain, S32) —
+          // harmless to always pass the tour's first room here.
+          returnSceneId={rooms[0]?.id ?? null}
+          onNavigate={goToScene}
+          suspended={suspendInteraction}
+          disabled={isLoading || isTransitioning}
+          // F32: S15's forward navigation is intentionally hotspot-only
+          // (the cream-display scene-link hotspot into S16) — the fixed
+          // Next button would otherwise skip straight to S18, bypassing
+          // it. Scoped to this one scene id; every other scene's Next
+          // button is unaffected.
+          hideNext={currentRoomId === "S15"}
+        />
+
+        {/* F7: only a small, non-blocking badge — never the full
+            `LoadingState` overlay used for the very first tour load below —
+            and only once `SLOW_TRANSITION_INDICATOR_DELAY_MS` has actually
+            passed, so a normal preloaded hop (see usePanorama's
+            `preloadAdjacentScenes`) never shows it. */}
+        {showSlowIndicator && !error && (
+          <div
+            className="pointer-events-none absolute inset-0 flex items-center justify-center"
+            role="status"
+            aria-label="Memuat panorama…"
+          >
+            <div className="h-9 w-9 animate-pulse rounded-full border-2 border-brass-line bg-deep/30" />
+          </div>
+        )}
 
         {isLoading && !error && (
           <div className="absolute inset-0">
