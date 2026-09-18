@@ -40,6 +40,17 @@ export type UseAmbienceResult = {
   isPlaying: boolean;
   /** Real play/pause of the one ambience element — never recreates it. */
   toggle: () => void;
+  /**
+   * QR/deep-link audio-entry prompt support: an explicit `play()` that
+   * resolves to whether playback genuinely started, instead of the
+   * silently-swallowed fire-and-forget the mount-time attempt and
+   * `toggle()` both use. A caller that needs to know for certain (e.g. only
+   * dismiss a UI prompt once sound is *actually* audible, never
+   * optimistically) calls this from its own real click handler — same
+   * `audio.play()` call, same browser gesture requirement, no bypass —
+   * and awaits the result instead of assuming success.
+   */
+  play: () => Promise<boolean>;
 };
 
 export function useAmbience(url: string): UseAmbienceResult {
@@ -80,5 +91,14 @@ export function useAmbience(url: string): UseAmbienceResult {
     }
   }, []);
 
-  return { isPlaying, toggle };
+  const play = useCallback((): Promise<boolean> => {
+    const audio = audioRef.current;
+    if (!audio) return Promise.resolve(false);
+    return audio
+      .play()
+      .then(() => true)
+      .catch(() => false);
+  }, []);
+
+  return { isPlaying, toggle, play };
 }

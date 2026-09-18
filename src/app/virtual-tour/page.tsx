@@ -19,6 +19,7 @@ import { CollectionSheet } from "@/components/collection/CollectionSheet";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { useAmbience } from "@/hooks/useAmbience";
+import { AudioEntryPrompt } from "@/components/audio/AudioEntryPrompt";
 
 const AMBIENCE_URL = "/audio/museum-ambience.mp3";
 
@@ -104,7 +105,17 @@ function VirtualTourPageInner() {
   // scene navigation. `isAmbienceOn`/`onToggleAmbience` below now mirror
   // the element's REAL play state (never an assumed/optimistic flag), so
   // RoomControls' existing speaker button needs no changes of its own.
-  const { isPlaying: isAmbienceOn, toggle: toggleAmbience } = useAmbience(AMBIENCE_URL);
+  const { isPlaying: isAmbienceOn, toggle: toggleAmbience, play: playAmbience } = useAmbience(AMBIENCE_URL);
+  // QR/deep-link audio-entry prompt (client request) — see
+  // `handlePanoramaLoad` below for the four-condition gate that decides
+  // whether this ever becomes true, and `AudioEntryPrompt`'s own doc
+  // comment for why it renders as a small card, not a fullscreen gate.
+  const [showAudioPrompt, setShowAudioPrompt] = useState(false);
+  // "Nanti saja" must stick for the rest of this page mount — a plain
+  // boolean is enough since `handlePanoramaLoad` (the only place that sets
+  // `showAudioPrompt` true) itself only ever runs once per mount.
+  const [audioPromptDismissed, setAudioPromptDismissed] = useState(false);
+  const [isRequestingAmbience, setIsRequestingAmbience] = useState(false);
   const [isZoneDrawerOpen, setIsZoneDrawerOpen] = useState(false);
   // Reported by ZoneCollectionsDrawer itself, not derived from
   // `isZoneDrawerOpen` — stays true for the drawer's whole closing
@@ -154,7 +165,43 @@ function VirtualTourPageInner() {
     if (hasOpenedDeepLinkCollection.current) return;
     hasOpenedDeepLinkCollection.current = true;
     openCollection(deepLinkCollectionId);
+    // Audio-entry prompt: evaluated at this exact moment (scene genuinely
+    // ready), not reactively — the other three gate conditions
+    // (deepLinkCollectionId, "not already playing", "not already
+    // dismissed") are checked here as a one-shot decision, same as the
+    // collection-open call above. If autoplay already succeeded by now
+    // (sticky activation from a same-tab "Masuk" click earlier, or the
+    // browser's own heuristics), `isAmbienceOn` is already true and this
+    // never fires — no prompt for a visitor who never needed one.
+    if (!isAmbienceOn && !audioPromptDismissed) {
+      setShowAudioPrompt(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- deliberately a one-shot read of isAmbienceOn/audioPromptDismissed at the moment this fires (guarded by hasOpenedDeepLinkCollection above), not a reactive dependency — re-running this callback identity on every isAmbienceOn/audioPromptDismissed change would defeat PanoramaViewer's own "onLoad fires once" contract for no benefit.
   }, [deepLinkCollectionId, openCollection]);
+
+  // "Mulai Kunjungan": a real click handler, so `playAmbience()`'s own
+  // `audio.play()` call is a genuine user gesture — no autoplay bypass.
+  // Closes the prompt ONLY once playback is confirmed via the returned
+  // Promise (backed by the element's own `play` event through `isPlaying`
+  // inside the hook), never optimistically — a failed attempt leaves the
+  // prompt open so the visitor can retry the same tap.
+  const handleStartWithAmbience = useCallback(async () => {
+    setIsRequestingAmbience(true);
+    const started = await playAmbience();
+    setIsRequestingAmbience(false);
+    if (started) {
+      setShowAudioPrompt(false);
+    }
+  }, [playAmbience]);
+
+  // "Nanti saja": closes the prompt, leaves ambience off, and — per the
+  // client's explicit rule — never shows it again for the rest of this
+  // page mount. The speaker button in RoomControls remains the visitor's
+  // own way to turn ambience on later, completely unchanged.
+  const handleDismissAudioPrompt = useCallback(() => {
+    setShowAudioPrompt(false);
+    setAudioPromptDismissed(true);
+  }, []);
 
   // Zone-persistent collection access (client request): a SEPARATE concern
   // from the physical orange hotspots above, which are untouched. Zone
@@ -262,6 +309,14 @@ function VirtualTourPageInner() {
         onOpenTranscript={() => setSheetState("transcript")}
         onCollapseTranscript={() => setSheetState("full")}
       />
+
+      {showAudioPrompt && (
+        <AudioEntryPrompt
+          onEnable={handleStartWithAmbience}
+          onDismiss={handleDismissAudioPrompt}
+          isRequesting={isRequestingAmbience}
+        />
+      )}
     </main>
   );
 }
